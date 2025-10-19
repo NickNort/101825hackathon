@@ -185,7 +185,7 @@ export async function POST(request: NextRequest) {
         {
           type: 'code_execution_2025_08_25',
           name: 'code_execution',
-        },
+        } as any, // Type assertion needed for beta feature not yet in SDK types
       ],
     });
 
