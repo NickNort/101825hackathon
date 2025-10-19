@@ -13,7 +13,7 @@ const RATE_LIMIT_MAX_REQUESTS = 10;
 
 // Security constants
 const ALLOWED_API_KEYS = process.env.ALLOWED_API_KEYS?.split(',').map(k => k.trim()) || [];
-const HARDCODED_MODEL = 'claude-3-5-sonnet-20241022';
+const HARDCODED_MODEL = 'claude-haiku-4-5-20251001';
 const MAX_TOKENS_LIMIT = 1000;
 const HARDCODED_SYSTEM_PROMPT = `You are a helpful AI assistant specializing in helping users create Claude Code skills.
 
@@ -58,15 +58,22 @@ When users ask about creating skills, guide them through understanding their use
 // Authentication middleware
 function authenticateRequest(request: NextRequest): { success: boolean; error?: string } {
   const apiKey = request.headers.get('X-API-Key');
-  
+
+  // Debug logging
+  console.log('Authentication attempt:', {
+    receivedKey: apiKey ? `${apiKey.substring(0, 5)}...` : 'none',
+    allowedKeysCount: ALLOWED_API_KEYS.length,
+    allowedKeysPreview: ALLOWED_API_KEYS.map(k => `${k.substring(0, 5)}...`),
+  });
+
   if (!apiKey) {
     return { success: false, error: 'API key is required' };
   }
-  
+
   if (!ALLOWED_API_KEYS.includes(apiKey)) {
     return { success: false, error: 'Invalid API key' };
   }
-  
+
   return { success: true };
 }
 
