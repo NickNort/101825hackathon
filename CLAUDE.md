@@ -43,6 +43,7 @@ The app follows Next.js 14 App Router architecture:
 - **`app/api/chat/route.ts`** - API endpoint handling all Claude AI interactions
   - Implements authentication, rate limiting, and input validation
   - Proxies requests to Anthropic API with hardcoded security parameters
+  - Uses modular skills system to configure agent capabilities
 
 - **`app/page.tsx`** - Client-side chat interface
   - React component with local state management for messages
@@ -52,6 +53,11 @@ The app follows Next.js 14 App Router architecture:
 
 - **`next.config.js`** - Next.js configuration with security headers
   - Sets X-Frame-Options, X-Content-Type-Options, HSTS, etc.
+
+- **`skills/`** - Modular skills system
+  - Individual skill modules that define agent capabilities
+  - Each skill provides system prompts and optional tools
+  - See skills/README.md for detailed documentation
 
 ### Security Architecture
 
@@ -131,22 +137,77 @@ Both `ANTHROPIC_API_KEY` and `ALLOWED_API_KEYS` must be set in production:
 
 Missing either variable will cause runtime failures.
 
+## Modular Skills System
+
+This project uses a **modular skills system** to configure agent capabilities without modifying core API code.
+
+### Overview
+
+Skills are individual modules (skills/*/skill.ts) that define:
+- System prompt fragments describing capabilities
+- Optional tools (code execution, custom functions)
+- Priority ordering for system prompt composition
+
+**Key Files:**
+- `skills/types.ts` - TypeScript type definitions
+- `skills/loader.ts` - Combines all enabled skills
+- `skills/*/skill.ts` - Individual skill modules
+
+**Pre-installed Skills:**
+- `general-assistant` - Basic conversational AI
+- `data-analysis` - Python data analysis with code execution
+- `web-dev` - Web development expertise
+
+### Adding a New Skill
+
+See skills/QUICK_START.md for a quick guide, or skills/README.md for comprehensive documentation.
+
+**Quick steps:**
+1. Create `skills/my-skill/skill.ts`
+2. Register in `skills/loader.ts`
+3. Restart server
+
+Example:
+```typescript
+import { Skill } from '../types';
+
+export const mySkillSkill: Skill = {
+  id: 'my-skill',
+  name: 'My Skill',
+  description: 'What this skill does',
+  enabled: true,
+  priority: 5,
+  systemPrompt: `## My Skill\n\nCapabilities...`,
+  tools: [],
+};
+```
+
+### Benefits
+
+- **Modularity**: Add/remove capabilities without touching API code
+- **Composability**: Combine multiple skills for complex use cases
+- **Maintainability**: Each skill is self-contained and documented
+- **Flexibility**: Enable/disable skills or adjust priorities
+
 ## Common Modification Scenarios
 
-**To change Claude model or parameters:**
-Modify constants in app/api/chat/route.ts:14-56. Note: These are intentionally hardcoded for security - client requests cannot override them.
+**To add a new skill:**
+See the Modular Skills System section above, or read skills/QUICK_START.md.
 
-**To customize the system prompt:**
-The agent currently specializes in helping users create Claude Code skills. To change this specialization or revert to a general-purpose assistant, modify `HARDCODED_SYSTEM_PROMPT` in app/api/chat/route.ts:18-56. The current system prompt includes comprehensive knowledge about skill structure, creation process, and best practices.
+**To change Claude model or parameters:**
+Modify constants in app/api/chat/route.ts:23-24. Note: These are intentionally hardcoded for security - client requests cannot override them.
+
+**To customize agent capabilities:**
+The agent's capabilities are defined by the modular skills system. Add, remove, or modify skills in the skills/ directory. See skills/README.md for details.
 
 **To adjust rate limits:**
-Modify constants in app/api/chat/route.ts:11-12 (`RATE_LIMIT_WINDOW` and `RATE_LIMIT_MAX_REQUESTS`).
+Modify constants in app/api/chat/route.ts:18-19 (`RATE_LIMIT_WINDOW` and `RATE_LIMIT_MAX_REQUESTS`).
 
 **To add more security headers:**
 Edit the headers array in next.config.js:4-32.
 
 **To change input validation limits:**
-Modify validation logic in app/api/chat/route.ts:113-128.
+Modify validation logic in app/api/chat/route.ts (search for input validation).
 
 ## Tech Stack
 

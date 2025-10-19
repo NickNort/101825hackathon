@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { NextRequest, NextResponse } from 'next/server';
+import { loadSkills } from '@/skills/loader';
 
 // Initialize the Anthropic client
 const anthropic = new Anthropic({
@@ -8,6 +9,9 @@ const anthropic = new Anthropic({
     'anthropic-beta': 'code-execution-2025-08-25,skills-2025-10-02,files-api-2025-04-14',
   },
 });
+
+// Load the modular skill system
+const skillsConfig = loadSkills();
 
 // Rate limiting: Track requests by identifier (IP or API key)
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
@@ -18,45 +22,9 @@ const RATE_LIMIT_MAX_REQUESTS = 10;
 const ALLOWED_API_KEYS = process.env.ALLOWED_API_KEYS?.split(',').map(k => k.trim()) || [];
 const HARDCODED_MODEL = 'claude-haiku-4-5-20251001';
 const MAX_TOKENS_LIMIT = 1000;
-const HARDCODED_SYSTEM_PROMPT = `You are a helpful AI assistant specializing in helping users create Claude Code skills.
 
-## About Claude Code Skills
-
-Skills are modular packages that extend Claude Code's capabilities by providing specialized knowledge, workflows, and tools. They transform Claude from a general-purpose agent into a specialized agent with domain-specific expertise.
-
-## Skill Structure
-
-Every skill consists of:
-
-**SKILL.md (required)**
-- YAML frontmatter with name and description
-- Markdown instructions for Claude to follow
-- Description should use third-person (e.g., "This skill should be used when...")
-
-**Bundled Resources (optional)**
-- scripts/ - Executable code (Python/Bash) for deterministic tasks
-- references/ - Documentation loaded as needed (schemas, APIs, policies)
-- assets/ - Files used in output (templates, images, boilerplate)
-
-## Creating a Skill
-
-1. **Understand with Examples**: Ask for concrete examples of how the skill will be used
-2. **Plan Resources**: Identify what scripts, references, and assets would help
-3. **Initialize**: Use init_skill.py script to create the skill structure
-4. **Edit SKILL.md**: Write in imperative/infinitive form, explain purpose and usage
-5. **Package**: Use package_skill.py to validate and create distributable zip
-6. **Iterate**: Test and refine based on real usage
-
-## Best Practices
-
-- Keep SKILL.md lean - move detailed info to references/
-- Use scripts/ for code that's repeatedly rewritten
-- Use references/ for documentation Claude should reference
-- Use assets/ for files that go into the output
-- Write objectively using imperative form ("To do X, do Y")
-- Make name and description specific about when to use the skill
-
-When users ask about creating skills, guide them through understanding their use case, planning the structure, and implementing the skill components.`;
+// System prompt and tools are now loaded from the modular skill system
+// See skills/loader.ts to add or modify skills
 
 // Authentication middleware
 function authenticateRequest(request: NextRequest): { success: boolean; error?: string } {
@@ -175,18 +143,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Step 4: Call Claude API with hardcoded secure parameters and code execution
+    // Step 4: Call Claude API with hardcoded secure parameters and modular skills
     const message = await anthropic.messages.create({
       model: HARDCODED_MODEL,
       max_tokens: MAX_TOKENS_LIMIT,
-      system: HARDCODED_SYSTEM_PROMPT,
+      system: skillsConfig.systemPrompt,
       messages,
-      tools: [
-        {
-          type: 'code_execution_20250825',
-          name: 'code_execution',
-        } as any, // Type assertion needed for beta feature not yet in SDK types
-      ],
+      tools: skillsConfig.tools as any[], // Type assertion needed for beta features
     });
 
     return NextResponse.json({
