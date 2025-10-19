@@ -175,12 +175,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Step 4: Call Claude API with hardcoded secure parameters
+    // Step 4: Call Claude API with hardcoded secure parameters and code execution
     const message = await anthropic.messages.create({
       model: HARDCODED_MODEL,
       max_tokens: MAX_TOKENS_LIMIT,
       system: HARDCODED_SYSTEM_PROMPT,
       messages,
+      tools: [
+        {
+          type: 'code_execution_2025_08_25',
+          name: 'code_execution',
+        },
+      ],
     });
 
     return NextResponse.json({
