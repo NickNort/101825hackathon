@@ -72,10 +72,11 @@ The application has **layered security controls** that are intentionally restric
    - Max 10,000 characters per message
    - Validates message array structure
 
-4. **Parameter Hardcoding** (app/api/chat/route.ts:14-18)
+4. **Parameter Hardcoding** (app/api/chat/route.ts:14-56)
    - Model: `claude-3-5-sonnet-20241022` (cannot be changed by clients)
    - Max tokens: 1000 (cannot be changed by clients)
-   - System prompt: "You are a helpful AI assistant." (cannot be changed by clients)
+   - System prompt: Specialized for Claude Code skill creation (cannot be changed by clients)
+   - The system prompt includes comprehensive guidance on creating Claude Code skills, including skill structure, best practices, and the creation process
    - These are **intentionally immutable** to prevent cost overruns and abuse
 
 5. **Security Headers** (next.config.js:4-32)
@@ -133,7 +134,10 @@ Missing either variable will cause runtime failures.
 ## Common Modification Scenarios
 
 **To change Claude model or parameters:**
-Modify constants in app/api/chat/route.ts:14-18. Note: These are intentionally hardcoded for security - client requests cannot override them.
+Modify constants in app/api/chat/route.ts:14-56. Note: These are intentionally hardcoded for security - client requests cannot override them.
+
+**To customize the system prompt:**
+The agent currently specializes in helping users create Claude Code skills. To change this specialization or revert to a general-purpose assistant, modify `HARDCODED_SYSTEM_PROMPT` in app/api/chat/route.ts:18-56. The current system prompt includes comprehensive knowledge about skill structure, creation process, and best practices.
 
 **To adjust rate limits:**
 Modify constants in app/api/chat/route.ts:11-12 (`RATE_LIMIT_WINDOW` and `RATE_LIMIT_MAX_REQUESTS`).

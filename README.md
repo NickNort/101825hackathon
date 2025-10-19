@@ -2,9 +2,12 @@
 
 A Next.js application that hosts a Claude AI agent on Vercel with a simple chat interface.
 
+**Looking to use the AI agent?** See the [User Guide](./USER_GUIDE.md) for detailed instructions on how to interact with Claude via the web interface or API.
+
 ## Features
 
 - 🤖 Chat with Claude AI (using Claude 3.5 Sonnet)
+- 🛠️ Specialized in helping create Claude Code skills
 - 🚀 Deployed on Vercel for global availability
 - 💬 Simple, clean chat interface
 - 🔒 Secure API key handling via environment variables
@@ -251,9 +254,9 @@ This application implements multiple layers of security:
 The application uses hardcoded security settings:
 - **Model:** `claude-3-5-sonnet-20241022`
 - **Max Tokens:** 1000
-- **System Prompt:** "You are a helpful AI assistant."
+- **System Prompt:** Specialized for Claude Code skill creation guidance
 
-These settings cannot be changed via API requests to prevent abuse and cost overruns.
+The system prompt includes comprehensive knowledge about creating Claude Code skills, including skill structure, best practices, and the creation process. These settings cannot be changed via API requests to prevent abuse and cost overruns.
 
 ## Troubleshooting
 
