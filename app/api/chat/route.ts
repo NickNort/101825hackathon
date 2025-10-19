@@ -1,30 +1,94 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { NextRequest, NextResponse } from 'next/server';
-import { loadSkills } from '@/skills/loader';
 
 // Initialize the Anthropic client
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
-  defaultHeaders: {
-    'anthropic-beta': 'code-execution-2025-08-25,skills-2025-10-02,files-api-2025-04-14',
-  },
 });
-
-// Load the modular skill system
-const skillsConfig = loadSkills();
 
 // Rate limiting: Track requests by identifier (IP or API key)
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
 const RATE_LIMIT_MAX_REQUESTS = 10;
 
+// Container management for skills
+const containerMap = new Map<string, {
+  containerId: string;
+  lastUsed: number;
+  skills: Array<{type: string; skill_id: string; version?: string}>;
+}>();
+
+// Type definitions for skills API
+interface Skill {
+  type: 'anthropic' | 'custom';
+  skill_id: string;
+  version?: string;
+}
+
+interface ContainerInfo {
+  containerId: string;
+  lastUsed: number;
+  skills: Skill[];
+}
+
+interface ChatRequest {
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  skills?: Skill[];
+  session_id?: string;
+}
+
+interface ChatResponse {
+  success: boolean;
+  data?: any;
+  container_id?: string;
+  file_ids?: string[];
+  requires_continuation?: boolean;
+  error?: string;
+}
+
 // Security constants
 const ALLOWED_API_KEYS = process.env.ALLOWED_API_KEYS?.split(',').map(k => k.trim()) || [];
 const HARDCODED_MODEL = 'claude-haiku-4-5-20251001';
 const MAX_TOKENS_LIMIT = 1000;
+const HARDCODED_SYSTEM_PROMPT = `You are a helpful AI assistant specializing in helping users create Claude Code skills.
 
-// System prompt and tools are now loaded from the modular skill system
-// See skills/loader.ts to add or modify skills
+## About Claude Code Skills
+
+Skills are modular packages that extend Claude Code's capabilities by providing specialized knowledge, workflows, and tools. They transform Claude from a general-purpose agent into a specialized agent with domain-specific expertise.
+
+## Skill Structure
+
+Every skill consists of:
+
+**SKILL.md (required)**
+- YAML frontmatter with name and description
+- Markdown instructions for Claude to follow
+- Description should use third-person (e.g., "This skill should be used when...")
+
+**Bundled Resources (optional)**
+- scripts/ - Executable code (Python/Bash) for deterministic tasks
+- references/ - Documentation loaded as needed (schemas, APIs, policies)
+- assets/ - Files used in output (templates, images, boilerplate)
+
+## Creating a Skill
+
+1. **Understand with Examples**: Ask for concrete examples of how the skill will be used
+2. **Plan Resources**: Identify what scripts, references, and assets would help
+3. **Initialize**: Use init_skill.py script to create the skill structure
+4. **Edit SKILL.md**: Write in imperative/infinitive form, explain purpose and usage
+5. **Package**: Use package_skill.py to validate and create distributable zip
+6. **Iterate**: Test and refine based on real usage
+
+## Best Practices
+
+- Keep SKILL.md lean - move detailed info to references/
+- Use scripts/ for code that's repeatedly rewritten
+- Use references/ for documentation Claude should reference
+- Use assets/ for files that go into the output
+- Write objectively using imperative form ("To do X, do Y")
+- Make name and description specific about when to use the skill
+
+When users ask about creating skills, guide them through understanding their use case, planning the structure, and implementing the skill components.`;
 
 // Authentication middleware
 function authenticateRequest(request: NextRequest): { success: boolean; error?: string } {
@@ -42,7 +106,7 @@ function authenticateRequest(request: NextRequest): { success: boolean; error?: 
   }
 
   if (!ALLOWED_API_KEYS.includes(apiKey)) {
-    return { success: false, error: 'Invalid 5dskillz API key' };
+    return { success: false, error: 'Invalid API key' };
   }
 
   return { success: true };
@@ -93,6 +157,57 @@ function getClientIdentifier(request: NextRequest): string {
   return apiKey || ip;
 }
 
+// Container management functions
+function getContainerKey(sessionId: string, apiKey: string): string {
+  return `${apiKey}:${sessionId}`;
+}
+
+function getOrCreateContainer(sessionId: string, apiKey: string, skills: Skill[] = []): string {
+  const key = getContainerKey(sessionId, apiKey);
+  const now = Date.now();
+  
+  // Clean up old containers (older than 1 hour)
+  for (const [containerKey, container] of containerMap.entries()) {
+    if (now - container.lastUsed > 60 * 60 * 1000) {
+      containerMap.delete(containerKey);
+    }
+  }
+  
+  const existing = containerMap.get(key);
+  
+  // Check if existing container has same skills
+  if (existing && JSON.stringify(existing.skills) === JSON.stringify(skills)) {
+    existing.lastUsed = now;
+    return existing.containerId;
+  }
+  
+  // Create new container
+  const containerId = `container_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  containerMap.set(key, {
+    containerId,
+    lastUsed: now,
+    skills: [...skills]
+  });
+  
+  return containerId;
+}
+
+function extractFileIds(content: any[]): string[] {
+  const fileIds: string[] = [];
+  
+  for (const item of content) {
+    if (item.type === 'text' && item.text) {
+      // Look for file IDs in the text content
+      const fileIdMatches = item.text.match(/file-[a-zA-Z0-9_-]+/g);
+      if (fileIdMatches) {
+        fileIds.push(...fileIdMatches);
+      }
+    }
+  }
+  
+  return fileIds;
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Step 1: Authentication
@@ -115,8 +230,8 @@ export async function POST(request: NextRequest) {
     }
     
     // Step 3: Parse and validate request
-    const body = await request.json();
-    const { messages } = body;
+    const body: ChatRequest = await request.json();
+    const { messages, skills = [], session_id } = body;
 
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json(
@@ -143,19 +258,43 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Step 4: Call Claude API with hardcoded secure parameters and modular skills
+    // Step 4: Get or create container for skills
+    const apiKey = request.headers.get('X-API-Key') || '';
+    const containerId = session_id ? getOrCreateContainer(session_id, apiKey, skills) : undefined;
+
+    // Step 5: Prepare skills configuration
+    const skillsConfig = skills.length > 0 ? {
+      skills: skills.map(skill => ({
+        type: skill.type,
+        skill_id: skill.skill_id,
+        ...(skill.version && { version: skill.version })
+      }))
+    } : {};
+
+    // Step 6: Call Claude API with skills support
     const message = await anthropic.messages.create({
       model: HARDCODED_MODEL,
       max_tokens: MAX_TOKENS_LIMIT,
-      system: skillsConfig.systemPrompt,
+      system: HARDCODED_SYSTEM_PROMPT,
       messages,
-      tools: skillsConfig.tools as any[], // Type assertion needed for beta features
+      tools: [{ type: 'bash_20250124', name: 'bash' }],
+      ...(containerId && { container: { id: containerId, ...skillsConfig } }),
+      ...(skills.length > 0 && !containerId && skillsConfig),
     });
 
-    return NextResponse.json({
+    // Step 7: Extract file IDs and check for pause_turn
+    const fileIds = extractFileIds(message.content);
+    const requiresContinuation = message.stop_reason === 'pause_turn';
+
+    const response: ChatResponse = {
       success: true,
       data: message,
-    });
+      ...(containerId && { container_id: containerId }),
+      ...(fileIds.length > 0 && { file_ids: fileIds }),
+      ...(requiresContinuation && { requires_continuation: true }),
+    };
+
+    return NextResponse.json(response);
   } catch (error: any) {
     // Log detailed error server-side only
     console.error('Error in chat API:', {
