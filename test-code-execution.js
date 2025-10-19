@@ -5,8 +5,19 @@
  * It sends a message asking Claude to execute Python code.
  */
 
+// Load environment variables from .env file
+require('dotenv').config();
+
 const API_URL = 'http://localhost:3000/api/chat'; // Change to your deployed URL for production
-const API_KEY = 'your-api-key-here'; // Replace with your actual API key from ALLOWED_API_KEYS
+const API_KEY = process.env.ALLOWED_API_KEYS?.split(',')[0]?.trim() || 'your-api-key-here'; // Get first key from ALLOWED_API_KEYS env variable
+
+// Check if API key is properly loaded
+if (!process.env.ALLOWED_API_KEYS || API_KEY === 'your-api-key-here') {
+  console.error('❌ Error: ALLOWED_API_KEYS not found in environment variables.');
+  console.error('Please make sure you have a .env file with ALLOWED_API_KEYS set.');
+  console.error('Example: ALLOWED_API_KEYS=key1,key2,key3\n');
+  process.exit(1);
+}
 
 async function testCodeExecution() {
   try {

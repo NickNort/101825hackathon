@@ -74,7 +74,7 @@ function authenticateRequest(request: NextRequest): { success: boolean; error?: 
   }
 
   if (!ALLOWED_API_KEYS.includes(apiKey)) {
-    return { success: false, error: 'Invalid API key' };
+    return { success: false, error: 'Invalid 5dskillz API key' };
   }
 
   return { success: true };
@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
       messages,
       tools: [
         {
-          type: 'code_execution_2025_08_25',
+          type: 'code_execution_20250825',
           name: 'code_execution',
         } as any, // Type assertion needed for beta feature not yet in SDK types
       ],
