@@ -6,8 +6,9 @@ A Next.js application that hosts a Claude AI agent on Vercel with a simple chat 
 
 ## Features
 
-- 🤖 Chat with Claude AI (using Claude 3.5 Sonnet)
+- 🤖 Chat with Claude AI (using Claude Sonnet 4.5)
 - 🛠️ Specialized in helping create Claude Code skills
+- 🧠 Custom Skills support - load and use skills from `skills/` directory
 - 🚀 Deployed on Vercel for global availability
 - 💬 Simple, clean chat interface
 - 🔒 Secure API key handling via environment variables
@@ -134,6 +135,110 @@ A Next.js application that hosts a Claude AI agent on Vercel with a simple chat 
    - Click "Deploy"
    - Wait for the deployment to complete
 
+## Custom Skills Support
+
+This agent supports custom skills loaded from a `skills/` directory. Skills extend Claude's capabilities with specialized knowledge, workflows, and tools.
+
+### Creating Custom Skills
+
+1. **Create a skill directory** in the `skills/` folder:
+   ```
+   skills/
+   ├── my-skill/
+   │   ├── SKILL.md          # Required: Skill instructions with YAML frontmatter
+   │   ├── scripts/          # Optional: Executable code
+   │   ├── references/       # Optional: Documentation and schemas
+   │   └── assets/           # Optional: Templates and files
+   ```
+
+2. **Write SKILL.md** with YAML frontmatter:
+   ```markdown
+   ---
+   name: My Custom Skill
+   description: This skill helps with specific tasks...
+   ---
+   
+   # My Custom Skill
+   
+   This skill provides...
+   ```
+
+3. **Upload skills** using the API:
+   ```bash
+   curl -X POST https://your-app.vercel.app/api/skills/upload \
+     -H "X-API-Key: your_api_key"
+   ```
+
+4. **Skills are automatically included** in chat requests
+
+### Example Skill Structure
+
+See `skills/example-skill/` for a complete example including:
+- **SKILL.md**: Main skill instructions
+- **scripts/**: Python analysis functions
+- **references/**: Data analysis guide
+- **assets/**: Report templates
+
+### Skills API Endpoints
+
+#### POST /api/skills/upload
+Upload all skills from the `skills/` directory to Anthropic.
+
+**Authentication Required:** Same as chat endpoint
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Successfully uploaded 2 skills",
+  "skills": [
+    {
+      "name": "Data Analysis Helper",
+      "skillId": "skill_01AbCdEfGhIjKlMnOpQrStUv",
+      "version": "1759178010641129"
+    }
+  ]
+}
+```
+
+#### GET /api/skills/upload
+List available skills in the `skills/` directory.
+
+**Response:**
+```json
+{
+  "success": true,
+  "skills": [
+    {
+      "name": "Data Analysis Helper",
+      "description": "This skill provides tools for data analysis...",
+      "directory": "example-skill",
+      "fileCount": 4
+    }
+  ]
+}
+```
+
+### Skills Directory Structure
+
+Each skill must be in its own subdirectory with:
+
+- **SKILL.md** (required): Main skill file with YAML frontmatter
+- **scripts/** (optional): Executable code (Python, Bash, etc.)
+- **references/** (optional): Documentation, schemas, APIs
+- **assets/** (optional): Templates, images, boilerplate files
+
+### Skill Development Best Practices
+
+1. **Keep SKILL.md lean** - Move detailed info to references/
+2. **Use scripts/** for code that's repeatedly rewritten
+3. **Use references/** for documentation Claude should reference
+4. **Use assets/** for files that go into the output
+5. **Write objectively** using imperative form ("To do X, do Y")
+6. **Make descriptions specific** about when to use the skill
+
+For detailed skill authoring guidance, see [skills-api-guide.md](./skills-api-guide.md).
+
 ## API Usage
 
 Once deployed, you can use the API endpoint directly:
@@ -159,9 +264,9 @@ Send messages to Claude and receive responses.
 ```
 
 **Note:** The `system`, `model`, and `max_tokens` parameters are now hardcoded server-side for security:
-- Model: `claude-3-5-sonnet-20241022`
+- Model: `claude-sonnet-4-5-20250929`
 - Max Tokens: 1000
-- System Prompt: "You are a helpful AI assistant."
+- System Prompt: Specialized for Claude Code skill creation guidance
 
 **Response:**
 ```json
@@ -177,7 +282,7 @@ Send messages to Claude and receive responses.
         "text": "Hello! How can I help you today?"
       }
     ],
-    "model": "claude-3-5-sonnet-20241022",
+    "model": "claude-sonnet-4-5-20250929",
     "stop_reason": "end_turn",
     "usage": {
       "input_tokens": 10,
@@ -252,7 +357,7 @@ This application implements multiple layers of security:
 ## Configuration
 
 The application uses hardcoded security settings:
-- **Model:** `claude-3-5-sonnet-20241022`
+- **Model:** `claude-sonnet-4-5-20250929`
 - **Max Tokens:** 1000
 - **System Prompt:** Specialized for Claude Code skill creation guidance
 

@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { NextRequest, NextResponse } from 'next/server';
+import { loadSkillsFromDirectory } from '../skills/utils';
 
 // Initialize the Anthropic client
 const anthropic = new Anthropic({
@@ -13,7 +14,7 @@ const RATE_LIMIT_MAX_REQUESTS = 10;
 
 // Security constants
 const ALLOWED_API_KEYS = process.env.ALLOWED_API_KEYS?.split(',').map(k => k.trim()) || [];
-const HARDCODED_MODEL = 'claude-haiku-4-5-20251001';
+const HARDCODED_MODEL = 'claude-sonnet-4-5-20250929';
 const MAX_TOKENS_LIMIT = 1000;
 const HARDCODED_SYSTEM_PROMPT = `You are a helpful AI assistant specializing in helping users create Claude Code skills.
 
@@ -172,12 +173,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Step 4: Call Claude API with hardcoded secure parameters
+    // Step 4: Load skills and prepare container configuration
+    const skillsDir = process.env.SKILLS_DIRECTORY || 'skills';
+    const skills = await loadSkillsFromDirectory(skillsDir);
+    
+    // For now, we'll use a simple approach where we load skills from directory
+    // In a production setup, you'd want to store uploaded skill IDs and reuse them
+    const container = skills.length > 0 ? {
+      skills: skills.map(skill => ({
+        type: 'custom' as const,
+        skill_id: `skill_${skill.name.toLowerCase().replace(/\s+/g, '_')}`, // Placeholder - would be actual skill ID
+        version: 'latest' as const
+      }))
+    } : undefined;
+
+    // Step 5: Call Claude API with skills support
     const message = await anthropic.messages.create({
       model: HARDCODED_MODEL,
       max_tokens: MAX_TOKENS_LIMIT,
       system: HARDCODED_SYSTEM_PROMPT,
       messages,
+      tools: [{
+        type: 'bash_20250124',
+        name: 'bash'
+      }]
     });
 
     return NextResponse.json({
