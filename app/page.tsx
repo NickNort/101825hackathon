@@ -1,6 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+
+interface Skill {
+  id: string;
+  name: string;
+  description: string;
+  source: 'anthropic' | 'custom';
+}
+
+interface FileInfo {
+  id: string;
+  filename: string;
+  content_type: string;
+}
 
 export default function Home() {
   const [messages, setMessages] = useState<Array<{ role: string; content: string }>>([]);
@@ -8,6 +21,36 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const [apiKeyError, setApiKeyError] = useState('');
+  const [availableSkills, setAvailableSkills] = useState<Skill[]>([]);
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [customSkillId, setCustomSkillId] = useState('');
+  const [sessionId, setSessionId] = useState('');
+  const [containerId, setContainerId] = useState('');
+  const [generatedFiles, setGeneratedFiles] = useState<FileInfo[]>([]);
+  const [requiresContinuation, setRequiresContinuation] = useState(false);
+
+  // Load available skills on component mount
+  useEffect(() => {
+    if (apiKey) {
+      loadSkills();
+    }
+  }, [apiKey]);
+
+  const loadSkills = async () => {
+    try {
+      const response = await fetch('/api/skills', {
+        headers: {
+          'X-API-Key': apiKey,
+        },
+      });
+      const data = await response.json();
+      if (data.success) {
+        setAvailableSkills(data.data);
+      }
+    } catch (error) {
+      console.error('Error loading skills:', error);
+    }
+  };
 
   const sendMessage = async () => {
     if (!input.trim()) return;
@@ -25,6 +68,28 @@ export default function Home() {
     setApiKeyError('');
 
     try {
+      // Prepare skills configuration
+      const skills = [];
+      
+      // Add selected Anthropic skills
+      for (const skillId of selectedSkills) {
+        const skill = availableSkills.find(s => s.id === skillId);
+        if (skill && skill.source === 'anthropic') {
+          skills.push({
+            type: 'anthropic',
+            skill_id: skillId
+          });
+        }
+      }
+      
+      // Add custom skill if specified
+      if (customSkillId.trim()) {
+        skills.push({
+          type: 'custom',
+          skill_id: customSkillId.trim()
+        });
+      }
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
@@ -33,6 +98,8 @@ export default function Home() {
         },
         body: JSON.stringify({
           messages: newMessages,
+          skills: skills,
+          session_id: sessionId || undefined,
         }),
       });
 
@@ -55,6 +122,42 @@ export default function Home() {
           role: 'assistant',
           content: data.data.content[0].text,
         }]);
+        
+        // Update container ID if provided
+        if (data.container_id) {
+          setContainerId(data.container_id);
+        }
+        
+        // Handle generated files
+        if (data.file_ids && data.file_ids.length > 0) {
+          // Load file metadata for each file ID
+          const filePromises = data.file_ids.map(async (fileId: string) => {
+            try {
+              const fileResponse = await fetch(`/api/files/${fileId}`, {
+                headers: { 'X-API-Key': apiKey }
+              });
+              const fileData = await fileResponse.json();
+              if (fileData.success) {
+                return fileData.data;
+              }
+            } catch (error) {
+              console.error('Error loading file metadata:', error);
+            }
+            return null;
+          });
+          
+          const files = await Promise.all(filePromises);
+          setGeneratedFiles(files.filter(f => f !== null));
+        }
+        
+        // Handle pause_turn continuation
+        if (data.requires_continuation) {
+          setRequiresContinuation(true);
+          // Automatically continue after a short delay
+          setTimeout(() => {
+            continueConversation();
+          }, 2000);
+        }
       } else {
         console.error('Error:', data.error);
         alert('Error: ' + (data.error || 'Unknown error'));
@@ -66,6 +169,94 @@ export default function Home() {
       setMessages(messages); // Restore previous messages
     } finally {
       setLoading(false);
+    }
+  };
+
+  const continueConversation = async () => {
+    if (!containerId || !apiKey) return;
+    
+    setLoading(true);
+    setRequiresContinuation(false);
+    
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': apiKey,
+        },
+        body: JSON.stringify({
+          messages: messages,
+          session_id: sessionId,
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (data.success && data.data.content[0]) {
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: data.data.content[0].text,
+        }]);
+        
+        // Handle generated files
+        if (data.file_ids && data.file_ids.length > 0) {
+          const filePromises = data.file_ids.map(async (fileId: string) => {
+            try {
+              const fileResponse = await fetch(`/api/files/${fileId}`, {
+                headers: { 'X-API-Key': apiKey }
+              });
+              const fileData = await fileResponse.json();
+              if (fileData.success) {
+                return fileData.data;
+              }
+            } catch (error) {
+              console.error('Error loading file metadata:', error);
+            }
+            return null;
+          });
+          
+          const files = await Promise.all(filePromises);
+          setGeneratedFiles(prev => [...prev, ...files.filter(f => f !== null)]);
+        }
+        
+        // Check if another continuation is needed
+        if (data.requires_continuation) {
+          setRequiresContinuation(true);
+          setTimeout(() => {
+            continueConversation();
+          }, 2000);
+        }
+      }
+    } catch (error) {
+      console.error('Error continuing conversation:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const downloadFile = async (fileId: string, filename: string) => {
+    try {
+      const response = await fetch(`/api/files/${fileId}/content`, {
+        headers: { 'X-API-Key': apiKey }
+      });
+      
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } else {
+        alert('Failed to download file');
+      }
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      alert('Error downloading file');
     }
   };
 
