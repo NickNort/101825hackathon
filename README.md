@@ -6,10 +6,13 @@ A Next.js application that hosts a Claude AI agent on Vercel with a simple chat 
 
 ## Features
 
-- 🤖 Chat with Claude AI (using Claude 3.5 Sonnet)
+- 🤖 Chat with Claude AI (using Claude Haiku 4.5)
 - 🛠️ Specialized in helping create Claude Code skills
+- 🎯 **Skills API Support** - Use Anthropic and custom skills in conversations
+- 📁 **File Generation & Download** - Download files created by skills
+- 🔄 **Container Management** - Multi-turn conversations with persistent context
 - 🚀 Deployed on Vercel for global availability
-- 💬 Simple, clean chat interface
+- 💬 Simple, clean chat interface with skills selection
 - 🔒 Secure API key handling via environment variables
 - ⚡ Fast and responsive API endpoints
 
@@ -140,7 +143,7 @@ Once deployed, you can use the API endpoint directly:
 
 ### POST /api/chat
 
-Send messages to Claude and receive responses.
+Send messages to Claude and receive responses with optional skills support.
 
 **Authentication Required:** All requests must include an `X-API-Key` header with a valid API key.
 
@@ -154,14 +157,25 @@ Send messages to Claude and receive responses.
       "role": "user",
       "content": "Hello, Claude!"
     }
-  ]
+  ],
+  "skills": [
+    {
+      "type": "anthropic",
+      "skill_id": "skill_pptx_20241002"
+    },
+    {
+      "type": "custom",
+      "skill_id": "your_custom_skill_id"
+    }
+  ],
+  "session_id": "optional_session_id"
 }
 ```
 
 **Note:** The `system`, `model`, and `max_tokens` parameters are now hardcoded server-side for security:
-- Model: `claude-3-5-sonnet-20241022`
+- Model: `claude-haiku-4-5-20251001`
 - Max Tokens: 1000
-- System Prompt: "You are a helpful AI assistant."
+- System Prompt: Specialized for Claude Code skill creation guidance
 
 **Response:**
 ```json
@@ -177,13 +191,16 @@ Send messages to Claude and receive responses.
         "text": "Hello! How can I help you today?"
       }
     ],
-    "model": "claude-3-5-sonnet-20241022",
+    "model": "claude-haiku-4-5-20251001",
     "stop_reason": "end_turn",
     "usage": {
       "input_tokens": 10,
       "output_tokens": 20
     }
-  }
+  },
+  "container_id": "container_1234567890_abcdef",
+  "file_ids": ["file-abc123", "file-def456"],
+  "requires_continuation": false
 }
 ```
 
@@ -212,6 +229,106 @@ Check if the API is running.
 }
 ```
 
+## Skills API
+
+### GET /api/skills
+
+List all available skills (Anthropic and custom).
+
+**Query Parameters:**
+- `source` (optional): Filter by source (`anthropic` or `custom`)
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "skill_pptx_20241002",
+      "name": "PowerPoint Generator",
+      "description": "Creates PowerPoint presentations",
+      "source": "anthropic"
+    }
+  ],
+  "count": 1
+}
+```
+
+### POST /api/skills
+
+Create a new custom skill.
+
+**Request:** Multipart form data with files (must include `SKILL.md`)
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "skill_custom_123",
+    "name": "My Custom Skill",
+    "description": "Custom skill description",
+    "source": "custom",
+    "created_at": "2025-01-19T07:37:00.000Z",
+    "versions": ["1.0.0"]
+  }
+}
+```
+
+### GET /api/skills/[skillId]
+
+Get details of a specific skill.
+
+### DELETE /api/skills/[skillId]
+
+Delete a skill (must delete all versions first).
+
+### GET /api/skills/[skillId]/versions
+
+List all versions of a skill.
+
+### POST /api/skills/[skillId]/versions
+
+Create a new version of a skill.
+
+### DELETE /api/skills/[skillId]/versions/[version]
+
+Delete a specific version of a skill.
+
+## Files API
+
+### GET /api/files
+
+List all files.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "file-abc123",
+      "filename": "presentation.pptx",
+      "content_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "created_at": "2025-01-19T07:37:00.000Z"
+    }
+  ],
+  "count": 1
+}
+```
+
+### GET /api/files/[fileId]
+
+Get metadata for a specific file.
+
+### DELETE /api/files/[fileId]
+
+Delete a file.
+
+### GET /api/files/[fileId]/content
+
+Download file content with proper headers for browser download.
+
 ## Security Features
 
 This application implements multiple layers of security:
@@ -232,9 +349,10 @@ This application implements multiple layers of security:
 - Strict validation of message structure
 
 ### Parameter Protection
-- Model is hardcoded to `claude-3-5-sonnet-20241022`
+- Model is hardcoded to `claude-haiku-4-5-20251001`
 - Max tokens capped at 1000
 - System prompt is fixed server-side
+- Beta features are enabled for skills and files API
 - Users cannot override these settings
 
 ### Security Headers
@@ -252,11 +370,20 @@ This application implements multiple layers of security:
 ## Configuration
 
 The application uses hardcoded security settings:
-- **Model:** `claude-3-5-sonnet-20241022`
+- **Model:** `claude-haiku-4-5-20251001`
 - **Max Tokens:** 1000
 - **System Prompt:** Specialized for Claude Code skill creation guidance
+- **Beta Features:** Skills API, Files API, and Code Execution enabled
 
 The system prompt includes comprehensive knowledge about creating Claude Code skills, including skill structure, best practices, and the creation process. These settings cannot be changed via API requests to prevent abuse and cost overruns.
+
+### Skills Support
+
+The application supports both Anthropic-provided skills and custom skills:
+- **Anthropic Skills:** PowerPoint, Excel, Word, PDF generation
+- **Custom Skills:** User-uploaded skills with SKILL.md files
+- **Container Management:** Persistent conversation context across multiple turns
+- **File Generation:** Automatic download links for files created by skills
 
 ## Troubleshooting
 
@@ -304,10 +431,24 @@ If you get 500 errors from the API:
 .
 ├── app/
 │   ├── api/
-│   │   └── chat/
-│   │       └── route.ts       # Claude API endpoint
+│   │   ├── chat/
+│   │   │   └── route.ts       # Claude chat API with skills support
+│   │   ├── skills/
+│   │   │   ├── route.ts       # Skills CRUD operations
+│   │   │   └── [skillId]/
+│   │   │       ├── route.ts   # Individual skill operations
+│   │   │       └── versions/
+│   │   │           ├── route.ts           # Skill versions list/create
+│   │   │           └── [version]/
+│   │   │               └── route.ts       # Version deletion
+│   │   └── files/
+│   │       ├── route.ts       # Files listing
+│   │       └── [fileId]/
+│   │           ├── route.ts   # File metadata/delete
+│   │           └── content/
+│   │               └── route.ts           # File download
 │   ├── layout.tsx             # Root layout
-│   └── page.tsx               # Chat interface
+│   └── page.tsx               # Chat interface with skills UI
 ├── next.config.js             # Next.js configuration
 ├── tsconfig.json              # TypeScript configuration
 ├── vercel.json                # Vercel configuration

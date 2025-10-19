@@ -313,6 +313,169 @@ export default function Home() {
         </p>
       </div>
 
+      {/* Skills Selection */}
+      {apiKey && availableSkills.length > 0 && (
+        <div style={{ 
+          marginTop: '20px', 
+          padding: '15px', 
+          backgroundColor: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          borderRadius: '8px' 
+        }}>
+          <h3 style={{ margin: '0 0 15px 0', color: '#1e293b' }}>Skills Configuration</h3>
+          
+          {/* Anthropic Skills */}
+          <div style={{ marginBottom: '15px' }}>
+            <label style={{ 
+              display: 'block', 
+              marginBottom: '8px', 
+              fontWeight: 'bold',
+              color: '#374151' 
+            }}>
+              Anthropic Skills:
+            </label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              {availableSkills
+                .filter(skill => skill.source === 'anthropic')
+                .map(skill => (
+                  <label key={skill.id} style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    padding: '8px 12px',
+                    backgroundColor: selectedSkills.includes(skill.id) ? '#dbeafe' : '#f1f5f9',
+                    border: selectedSkills.includes(skill.id) ? '2px solid #3b82f6' : '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '14px'
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedSkills.includes(skill.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedSkills(prev => [...prev, skill.id]);
+                        } else {
+                          setSelectedSkills(prev => prev.filter(id => id !== skill.id));
+                        }
+                      }}
+                      style={{ marginRight: '8px' }}
+                    />
+                    {skill.name}
+                  </label>
+                ))}
+            </div>
+          </div>
+
+          {/* Custom Skill ID */}
+          <div style={{ marginBottom: '15px' }}>
+            <label style={{ 
+              display: 'block', 
+              marginBottom: '8px', 
+              fontWeight: 'bold',
+              color: '#374151' 
+            }}>
+              Custom Skill ID (optional):
+            </label>
+            <input
+              type="text"
+              value={customSkillId}
+              onChange={(e) => setCustomSkillId(e.target.value)}
+              placeholder="Enter custom skill ID"
+              style={{
+                width: '100%',
+                padding: '10px',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                fontSize: '14px',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+
+          {/* Session ID */}
+          <div>
+            <label style={{ 
+              display: 'block', 
+              marginBottom: '8px', 
+              fontWeight: 'bold',
+              color: '#374151' 
+            }}>
+              Session ID (optional):
+            </label>
+            <input
+              type="text"
+              value={sessionId}
+              onChange={(e) => setSessionId(e.target.value)}
+              placeholder="Enter session ID for conversation continuity"
+              style={{
+                width: '100%',
+                padding: '10px',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                fontSize: '14px',
+                boxSizing: 'border-box'
+              }}
+            />
+            <p style={{ fontSize: '12px', color: '#64748b', marginTop: '5px', marginBottom: '0' }}>
+              Leave empty to start a new conversation. Provide a session ID to continue an existing conversation.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Generated Files */}
+      {generatedFiles.length > 0 && (
+        <div style={{ 
+          marginTop: '20px', 
+          padding: '15px', 
+          backgroundColor: '#f0fdf4',
+          border: '1px solid #bbf7d0',
+          borderRadius: '8px' 
+        }}>
+          <h3 style={{ margin: '0 0 15px 0', color: '#166534' }}>Generated Files</h3>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+            {generatedFiles.map((file, index) => (
+              <button
+                key={index}
+                onClick={() => downloadFile(file.id, file.filename)}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#22c55e',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 'bold'
+                }}
+              >
+                📄 {file.filename}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Container Status */}
+      {containerId && (
+        <div style={{ 
+          marginTop: '20px', 
+          padding: '10px', 
+          backgroundColor: '#fef3c7',
+          border: '1px solid #f59e0b',
+          borderRadius: '6px',
+          fontSize: '14px',
+          color: '#92400e'
+        }}>
+          <strong>Container ID:</strong> {containerId}
+          {requiresContinuation && (
+            <span style={{ marginLeft: '10px', fontStyle: 'italic' }}>
+              (Processing...)
+            </span>
+          )}
+        </div>
+      )}
+
       <div style={{
         border: '1px solid #ddd',
         borderRadius: '8px',

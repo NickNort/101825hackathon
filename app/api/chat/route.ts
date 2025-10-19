@@ -48,7 +48,7 @@ interface ChatResponse {
 
 // Security constants
 const ALLOWED_API_KEYS = process.env.ALLOWED_API_KEYS?.split(',').map(k => k.trim()) || [];
-const HARDCODED_MODEL = 'claude-3-5-sonnet-20241022';
+const HARDCODED_MODEL = 'claude-haiku-4-5-20251001';
 const MAX_TOKENS_LIMIT = 1000;
 const HARDCODED_SYSTEM_PROMPT = `You are a helpful AI assistant specializing in helping users create Claude Code skills.
 
