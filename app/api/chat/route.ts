@@ -11,6 +11,41 @@ const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
 const RATE_LIMIT_MAX_REQUESTS = 10;
 
+// Container management for skills
+const containerMap = new Map<string, {
+  containerId: string;
+  lastUsed: number;
+  skills: Array<{type: string; skill_id: string; version?: string}>;
+}>();
+
+// Type definitions for skills API
+interface Skill {
+  type: 'anthropic' | 'custom';
+  skill_id: string;
+  version?: string;
+}
+
+interface ContainerInfo {
+  containerId: string;
+  lastUsed: number;
+  skills: Skill[];
+}
+
+interface ChatRequest {
+  messages: Array<{ role: string; content: string }>;
+  skills?: Skill[];
+  session_id?: string;
+}
+
+interface ChatResponse {
+  success: boolean;
+  data?: any;
+  container_id?: string;
+  file_ids?: string[];
+  requires_continuation?: boolean;
+  error?: string;
+}
+
 // Security constants
 const ALLOWED_API_KEYS = process.env.ALLOWED_API_KEYS?.split(',').map(k => k.trim()) || [];
 const HARDCODED_MODEL = 'claude-haiku-4-5-20251001';
@@ -122,6 +157,57 @@ function getClientIdentifier(request: NextRequest): string {
   return apiKey || ip;
 }
 
+// Container management functions
+function getContainerKey(sessionId: string, apiKey: string): string {
+  return `${apiKey}:${sessionId}`;
+}
+
+function getOrCreateContainer(sessionId: string, apiKey: string, skills: Skill[] = []): string {
+  const key = getContainerKey(sessionId, apiKey);
+  const now = Date.now();
+  
+  // Clean up old containers (older than 1 hour)
+  for (const [containerKey, container] of containerMap.entries()) {
+    if (now - container.lastUsed > 60 * 60 * 1000) {
+      containerMap.delete(containerKey);
+    }
+  }
+  
+  const existing = containerMap.get(key);
+  
+  // Check if existing container has same skills
+  if (existing && JSON.stringify(existing.skills) === JSON.stringify(skills)) {
+    existing.lastUsed = now;
+    return existing.containerId;
+  }
+  
+  // Create new container
+  const containerId = `container_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  containerMap.set(key, {
+    containerId,
+    lastUsed: now,
+    skills: [...skills]
+  });
+  
+  return containerId;
+}
+
+function extractFileIds(content: any[]): string[] {
+  const fileIds: string[] = [];
+  
+  for (const item of content) {
+    if (item.type === 'text' && item.text) {
+      // Look for file IDs in the text content
+      const fileIdMatches = item.text.match(/file-[a-zA-Z0-9_-]+/g);
+      if (fileIdMatches) {
+        fileIds.push(...fileIdMatches);
+      }
+    }
+  }
+  
+  return fileIds;
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Step 1: Authentication
@@ -144,8 +230,8 @@ export async function POST(request: NextRequest) {
     }
     
     // Step 3: Parse and validate request
-    const body = await request.json();
-    const { messages } = body;
+    const body: ChatRequest = await request.json();
+    const { messages, skills = [], session_id } = body;
 
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json(
@@ -172,18 +258,44 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Step 4: Call Claude API with hardcoded secure parameters
+    // Step 4: Get or create container for skills
+    const apiKey = request.headers.get('X-API-Key') || '';
+    const containerId = session_id ? getOrCreateContainer(session_id, apiKey, skills) : undefined;
+
+    // Step 5: Prepare skills configuration
+    const skillsConfig = skills.length > 0 ? {
+      skills: skills.map(skill => ({
+        type: skill.type,
+        skill_id: skill.skill_id,
+        ...(skill.version && { version: skill.version })
+      }))
+    } : {};
+
+    // Step 6: Call Claude API with skills support
     const message = await anthropic.messages.create({
       model: HARDCODED_MODEL,
       max_tokens: MAX_TOKENS_LIMIT,
       system: HARDCODED_SYSTEM_PROMPT,
       messages,
+      betas: ['code-execution-2025-08-25', 'skills-2025-10-02', 'files-api-2025-04-14'],
+      tools: [{ type: 'code_execution_20250825', name: 'code_execution' }],
+      ...(containerId && { container: { id: containerId, ...skillsConfig } }),
+      ...(skills.length > 0 && !containerId && skillsConfig),
     });
 
-    return NextResponse.json({
+    // Step 7: Extract file IDs and check for pause_turn
+    const fileIds = extractFileIds(message.content);
+    const requiresContinuation = message.stop_reason === 'pause_turn';
+
+    const response: ChatResponse = {
       success: true,
       data: message,
-    });
+      ...(containerId && { container_id: containerId }),
+      ...(fileIds.length > 0 && { file_ids: fileIds }),
+      ...(requiresContinuation && { requires_continuation: true }),
+    };
+
+    return NextResponse.json(response);
   } catch (error: any) {
     // Log detailed error server-side only
     console.error('Error in chat API:', {
