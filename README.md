@@ -30,6 +30,16 @@ A Next.js application that hosts a Claude AI agent on Vercel with a simple chat 
    Create a `.env.local` file in the root directory:
    ```
    ANTHROPIC_API_KEY=your_api_key_here
+   ALLOWED_API_KEYS=your_secure_key_1,your_secure_key_2
+   ```
+   
+   **Important:** Generate secure API keys for client authentication:
+   ```bash
+   # Generate a secure key (Linux/macOS)
+   openssl rand -hex 32
+   
+   # Or use Node.js
+   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
    ```
 
 3. **Run the development server:**
@@ -67,13 +77,22 @@ A Next.js application that hosts a Claude AI agent on Vercel with a simple chat 
    - What's your project's name? (press Enter to use default)
    - In which directory is your code located? `./`
 
-4. **Add environment variable:**
+4. **Add environment variables:**
    ```bash
    vercel env add ANTHROPIC_API_KEY
    ```
    
    When prompted:
    - Enter the value: (paste your Anthropic API key)
+   - Expose variable to: Select all environments (Production, Preview, Development)
+   
+   Then add the client API keys:
+   ```bash
+   vercel env add ALLOWED_API_KEYS
+   ```
+   
+   When prompted:
+   - Enter the value: (comma-separated list of secure keys, e.g., key1,key2,key3)
    - Expose variable to: Select all environments (Production, Preview, Development)
 
 5. **Deploy to production:**
@@ -102,10 +121,11 @@ A Next.js application that hosts a Claude AI agent on Vercel with a simple chat 
      - Build Command: `npm run build` (auto-detected)
      - Output Directory: .next (auto-detected)
 
-3. **Add environment variable:**
+3. **Add environment variables:**
    - In the project settings, go to "Environment Variables"
    - Add `ANTHROPIC_API_KEY` with your Anthropic API key
-   - Make sure it's enabled for Production, Preview, and Development
+   - Add `ALLOWED_API_KEYS` with your comma-separated client API keys
+   - Make sure both are enabled for Production, Preview, and Development
 
 4. **Deploy:**
    - Click "Deploy"
@@ -119,6 +139,10 @@ Once deployed, you can use the API endpoint directly:
 
 Send messages to Claude and receive responses.
 
+**Authentication Required:** All requests must include an `X-API-Key` header with a valid API key.
+
+**Rate Limiting:** 10 requests per minute per API key/IP address.
+
 **Request:**
 ```json
 {
@@ -127,12 +151,14 @@ Send messages to Claude and receive responses.
       "role": "user",
       "content": "Hello, Claude!"
     }
-  ],
-  "system": "You are a helpful assistant.",
-  "model": "claude-3-5-sonnet-20241022",
-  "max_tokens": 1024
+  ]
 }
 ```
+
+**Note:** The `system`, `model`, and `max_tokens` parameters are now hardcoded server-side for security:
+- Model: `claude-3-5-sonnet-20241022`
+- Max Tokens: 1000
+- System Prompt: "You are a helpful AI assistant."
 
 **Response:**
 ```json
@@ -162,6 +188,7 @@ Send messages to Claude and receive responses.
 ```bash
 curl -X POST https://your-app.vercel.app/api/chat \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: your_authorized_api_key" \
   -d '{
     "messages": [
       {"role": "user", "content": "What is the capital of France?"}
@@ -182,35 +209,77 @@ Check if the API is running.
 }
 ```
 
+## Security Features
+
+This application implements multiple layers of security:
+
+### Authentication
+- **API Key Requirement:** All requests must include a valid API key in the `X-API-Key` header
+- **Server-Side Validation:** API keys are validated against environment variables
+- Keys should be generated using secure random methods (see setup instructions)
+
+### Rate Limiting
+- **10 requests per minute** per API key or IP address
+- In-memory rate limiting (resets on server restart)
+- Automatic cleanup of old entries
+
+### Input Validation
+- Maximum 50 messages per conversation
+- Maximum 10,000 characters per message
+- Strict validation of message structure
+
+### Parameter Protection
+- Model is hardcoded to `claude-3-5-sonnet-20241022`
+- Max tokens capped at 1000
+- System prompt is fixed server-side
+- Users cannot override these settings
+
+### Security Headers
+- X-Frame-Options: DENY (prevents clickjacking)
+- X-Content-Type-Options: nosniff
+- Strict-Transport-Security (HSTS)
+- Referrer-Policy
+- Permissions-Policy
+
+### Error Handling
+- Generic error messages sent to clients
+- Detailed errors logged server-side only
+- No stack traces or sensitive information exposed
+
 ## Configuration
 
-### Supported Claude Models
+The application uses hardcoded security settings:
+- **Model:** `claude-3-5-sonnet-20241022`
+- **Max Tokens:** 1000
+- **System Prompt:** "You are a helpful AI assistant."
 
-You can change the model in your requests:
-- `claude-3-5-sonnet-20241022` (default, recommended)
-- `claude-3-opus-20240229`
-- `claude-3-sonnet-20240229`
-- `claude-3-haiku-20240307`
-
-### Customizing System Prompt
-
-Pass a custom `system` parameter in your API requests to change Claude's behavior:
-
-```json
-{
-  "messages": [...],
-  "system": "You are a helpful coding assistant specialized in Python."
-}
-```
+These settings cannot be changed via API requests to prevent abuse and cost overruns.
 
 ## Troubleshooting
 
 ### Environment Variables Not Working
 
-If your API key isn't being recognized:
-1. Make sure the variable is named exactly `ANTHROPIC_API_KEY`
-2. Redeploy after adding environment variables: `vercel --prod`
-3. Check Vercel dashboard → Project Settings → Environment Variables
+If your API keys aren't being recognized:
+1. Make sure variables are named exactly `ANTHROPIC_API_KEY` and `ALLOWED_API_KEYS`
+2. For `ALLOWED_API_KEYS`, use comma-separated values with no spaces (or trim spaces)
+3. Redeploy after adding environment variables: `vercel --prod`
+4. Check Vercel dashboard → Project Settings → Environment Variables
+
+### Authentication Errors
+
+If you get "Invalid API key" errors:
+1. Verify the API key is included in `ALLOWED_API_KEYS` environment variable
+2. Check that you're passing the key in the `X-API-Key` header
+3. Ensure there are no extra spaces in the key
+4. Generate a new key if needed: `openssl rand -hex 32`
+
+### Rate Limit Errors
+
+If you get "Rate limit exceeded" errors:
+1. Wait 60 seconds before retrying
+2. Reduce request frequency
+3. Check if multiple clients are using the same API key
+4. Consider increasing the rate limit in `app/api/chat/route.ts` if needed
 
 ### Build Errors
 
