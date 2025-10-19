@@ -4,6 +4,9 @@ import { NextRequest, NextResponse } from 'next/server';
 // Initialize the Anthropic client
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
+  defaultHeaders: {
+    'anthropic-beta': 'code-execution-2025-08-25,skills-2025-10-02,files-api-2025-04-14',
+  },
 });
 
 // Rate limiting: Track requests by identifier (IP or API key)
